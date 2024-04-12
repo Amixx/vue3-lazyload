@@ -7,7 +7,7 @@
   <h1>v-for with src</h1>
   <img v-for="item in defaultImages" v-lazy="{ src: item }" alt="Vue logo" class="image" width="100" />
   <h1>v-for with srcset</h1>
-  <img v-for="item in imagesWithSrcsetAndSizes" v-lazy="{ src: item.src, srcset: item.srcset }" alt="Vue logo" class="image" width="100" />
+  <img v-for="item in imagesWithSrcsetAndSizes" v-lazy="item" alt="Vue logo" class="image" width="100" />
 </template>
 
 <script>

@@ -131,6 +131,12 @@ export default class Lazy {
         if (preSrcset !== srcset)
           el.setAttribute('srcset', srcset)
       }
+      console.log(sizes)
+      if (sizes) {
+        const preSizes = el.getAttribute('sizes')
+        if (preSizes !== sizes)
+          el.setAttribute('sizes', sizes)
+      }
 
       this._listenImageStatus(el as HTMLImageElement, () => {
         this._lifecycle(LifecycleEnum.LOADED, lifecycle, el)
