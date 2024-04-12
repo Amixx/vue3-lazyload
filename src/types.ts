@@ -10,6 +10,8 @@ export interface LazyOptions {
 
 export interface ValueFormatterObject {
   src: string
+  srcset?: string
+  sizes?: string
   error?: string
   loading?: string
   lifecycle?: Lifecycle

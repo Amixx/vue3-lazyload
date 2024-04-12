@@ -56,16 +56,17 @@ export default class Lazy {
   public mount(el: HTMLElement, binding: string | DirectiveBinding<string | ValueFormatterObject>): void {
     if (!el)
       return
-    const { src, loading, error, lifecycle, delay } = this._valueFormatter(typeof binding === 'string' ? binding : binding.value)
+    const { src, srcset, sizes, loading, error, lifecycle, delay } = this._valueFormatter(typeof binding === 'string' ? binding : binding.value)
     this._lifecycle(LifecycleEnum.LOADING, lifecycle, el)
     el.setAttribute('src', loading || DEFAULT_LOADING)
+
     if (!hasIntersectionObserver) {
-      this.loadImages(el, src, error, lifecycle)
+      this.loadImages(el, src, srcset, sizes, error, lifecycle)
       this._log(() => {
         this._logger('Not support IntersectionObserver!')
       })
     }
-    this._initIntersectionObserver(el, src, error, lifecycle, delay)
+    this._initIntersectionObserver(el, src, srcset, sizes, error, lifecycle, delay)
   }
 
   /**
@@ -78,8 +79,8 @@ export default class Lazy {
     if (!el)
       return
     this._realObserver(el)?.unobserve(el)
-    const { src, error, lifecycle, delay } = this._valueFormatter(typeof binding === 'string' ? binding : binding.value)
-    this._initIntersectionObserver(el, src, error, lifecycle, delay)
+    const { src, srcset, sizes, error, lifecycle, delay } = this._valueFormatter(typeof binding === 'string' ? binding : binding.value)
+    this._initIntersectionObserver(el, src, srcset, sizes, error, lifecycle, delay)
   }
 
   /**
@@ -100,27 +101,37 @@ export default class Lazy {
    *
    * @param {HTMLElement} el
    * @param {string} src
+   * @param {string|undefined} srcset
+   * @param {string|undefined} sizes
    * @memberof Lazy
    */
-  public loadImages(el: HTMLElement, src: string, error?: string, lifecycle?: Lifecycle): void {
-    this._setImageSrc(el, src, error, lifecycle)
+  public loadImages(el: HTMLElement, src: string, srcset?: string, sizes?: string, error?: string, lifecycle?: Lifecycle): void {
+    this._setImageSrc(el, src, srcset, sizes, error, lifecycle)
   }
 
   /**
-   * set img tag src
+   * set img tag src and srcset attributes
    *
    * @private
    * @param {HTMLElement} el
    * @param {string} src
+   * @param {string|undefined} srcset
+   * @param {string|undefined} sizes
    * @memberof Lazy
    */
-  private _setImageSrc(el: HTMLElement, src: string, error?: string, lifecycle?: Lifecycle): void {
+  private _setImageSrc(el: HTMLElement, src: string, srcset?: string, sizes?: string, error?: string, lifecycle?: Lifecycle): void {
     if (el.tagName.toLowerCase() === 'img') {
       if (src) {
         const preSrc = el.getAttribute('src')
         if (preSrc !== src)
           el.setAttribute('src', src)
       }
+      if (srcset) {
+        const preSrcset = el.getAttribute('srcset')
+        if (preSrcset !== srcset)
+          el.setAttribute('srcset', srcset)
+      }
+
       this._listenImageStatus(el as HTMLImageElement, () => {
         this._lifecycle(LifecycleEnum.LOADED, lifecycle, el)
       }, () => {
@@ -134,7 +145,7 @@ export default class Lazy {
           if (newImageSrc !== error)
             el.setAttribute('src', error)
         }
-        this._log(() => { this._logger(`Image failed to load!And failed src was: ${src} `) })
+        this._log(() => { this._logger(`Image failed to load!And failed src was: ${src}; srcset was: ${srcset ?? ''}; sizes were: ${sizes ?? ''}`) })
       })
     }
     else {
@@ -148,35 +159,36 @@ export default class Lazy {
    * @private
    * @param {HTMLElement} el
    * @param {string} src
+   * @param {string|undefined} srcset
    * @memberof Lazy
    */
-  private _initIntersectionObserver(el: HTMLElement, src: string, error?: string, lifecycle?: Lifecycle, delay?: number): void {
+  private _initIntersectionObserver(el: HTMLElement, src: string, srcset?: string, sizes?: string, error?: string, lifecycle?: Lifecycle, delay?: number): void {
     const observerOptions = this.options.observerOptions
     this._images.set(el, new IntersectionObserver((entries) => {
       Array.prototype.forEach.call(entries, (entry) => {
         if (delay && delay > 0)
-          this._delayedIntersectionCallback(el, entry, delay, src, error, lifecycle)
+          this._delayedIntersectionCallback(el, entry, delay, src, srcset, sizes, error, lifecycle)
         else
-          this._intersectionCallback(el, entry, src, error, lifecycle)
+          this._intersectionCallback(el, entry, src, srcset, sizes, error, lifecycle)
       })
     }, observerOptions))
     this._realObserver(el)?.observe(el)
   }
 
-  private _intersectionCallback(el: HTMLElement, entry: IntersectionObserverEntry, src: string, error?: string, lifecycle?: Lifecycle): void {
+  private _intersectionCallback(el: HTMLElement, entry: IntersectionObserverEntry, src: string, srcset?: string, sizes?: string, error?: string, lifecycle?: Lifecycle): void {
     if (entry.isIntersecting) {
       this._realObserver(el)?.unobserve(entry.target)
-      this._setImageSrc(el, src, error, lifecycle)
+      this._setImageSrc(el, src, srcset, sizes, error, lifecycle)
     }
   }
 
-  private _delayedIntersectionCallback(el: HTMLElement, entry: IntersectionObserverEntry, delay: number, src: string, error?: string, lifecycle?: Lifecycle): void {
+  private _delayedIntersectionCallback(el: HTMLElement, entry: IntersectionObserverEntry, delay: number, src: string, srcset?: string, sizes?: string, error?: string, lifecycle?: Lifecycle): void {
     if (entry.isIntersecting) {
       if (entry.target.hasAttribute(TIMEOUT_ID_DATA_ATTR))
         return
 
       const timeoutId = setTimeout(() => {
-        this._intersectionCallback(el, entry, src, error, lifecycle)
+        this._intersectionCallback(el, entry, src, srcset, sizes, error, lifecycle)
         entry.target.removeAttribute(TIMEOUT_ID_DATA_ATTR)
       }, delay)
       entry.target.setAttribute(TIMEOUT_ID_DATA_ATTR, String(timeoutId))
@@ -193,8 +205,7 @@ export default class Lazy {
    * only listen to image status
    *
    * @private
-   * @param {string} src
-   * @param {(string | null)} cors
+   * @param image
    * @param {() => void} success
    * @param {() => void} error
    * @memberof Lazy
@@ -213,24 +224,25 @@ export default class Lazy {
    * @memberof Lazy
    */
   public _valueFormatter(value: ValueFormatterObject | string): ValueFormatterObject {
-    let src = value as string
-    let loading = this.options.loading
-    let error = this.options.error
-    let lifecycle = this.options.lifecycle
-    let delay = this.options.delay
     if (isObject(value)) {
-      src = (value as ValueFormatterObject).src
-      loading = (value as ValueFormatterObject).loading || this.options.loading
-      error = (value as ValueFormatterObject).error || this.options.error
-      lifecycle = ((value as ValueFormatterObject).lifecycle || this.options.lifecycle)
-      delay = ((value as ValueFormatterObject).delay || this.options.delay)
+      const val = value as ValueFormatterObject
+      return {
+        src: val.src,
+        srcset: val.srcset,
+        sizes: val.sizes,
+        loading: val.loading || this.options.loading,
+        error: val.error || this.options.error,
+        lifecycle: (val.lifecycle || this.options.lifecycle),
+        delay: (val.delay || this.options.delay),
+      }
     }
+
     return {
-      src,
-      loading,
-      error,
-      lifecycle,
-      delay,
+      src: value as string,
+      loading: this.options.loading,
+      error: this.options.error,
+      lifecycle: this.options.lifecycle,
+      delay: this.options.delay,
     }
   }
 
