@@ -131,7 +131,6 @@ export default class Lazy {
         if (preSrcset !== srcset)
           el.setAttribute('srcset', srcset)
       }
-      console.log(sizes)
       if (sizes) {
         const preSizes = el.getAttribute('sizes')
         if (preSizes !== sizes)
